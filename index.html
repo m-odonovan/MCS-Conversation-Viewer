@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Copilot Studio Transcript Debugger</title>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --bg-2: #252526;
+    --bg-3: #2d2d30;
+    --border: #3c3c3c;
+    --fg: #d4d4d4;
+    --fg-dim: #9d9d9d;
+    --accent: #569cd6;
+    --user: #FFFF00;
+    --bot: #569cd6;
+    --debug: #c586c0;
+    --trace: #d7ba7d;
+    --event: #ce9178;
+    --typing: #808080;
+    --error: #f48771;
+    --ok: #6a9955;
+    --json-key: #9cdcfe;
+    --json-str: #ce9178;
+    --json-num: #b5cea8;
+    --json-bool: #569cd6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+  }
+  header h1 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .toolbar input[type="text"], .toolbar input[type="search"] {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 4px 8px;
+    border-radius: 4px;
+    min-width: 200px;
+  }
+  button {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover { background: #3a3a3d; }
+  button.primary { background: #0e639c; border-color: #0e639c; color: #fff; }
+  button.primary:hover { background: #1177bb; }
+  label.chk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; color: var(--fg-dim); }
+  .filters { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+  #dropzone {
+    margin: 40px auto;
+    max-width: 720px;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    color: var(--fg-dim);
+  }
+  #dropzone.drag { border-color: var(--accent); background: var(--bg-2); }
+  #pasteArea {
+    width: 100%;
+    height: 140px;
+    margin-top: 12px;
+    background: var(--bg-3);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: Consolas, monospace;
+    padding: 8px;
+  }
+
+  #stats { color: var(--fg-dim); margin-left: auto; font-size: 12px; }
+
+  main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+
+  .activity {
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 6px;
+    margin: 10px 0;
+    background: var(--bg-2);
+    overflow: hidden;
+  }
+  .activity.role-user { border-left-color: var(--user); transform: translateX(-100px); }
+  .activity.role-bot  { border-left-color: var(--bot); transform: translateX(100px); }
+  .activity.role-debug{ border-left-color: var(--debug); }
+  .activity.kind-trace{ border-left-color: var(--trace); }
+  .activity.kind-event{ border-left-color: var(--event); }
+  .activity.kind-typing{ border-left-color: var(--typing); opacity: .75; }
+
+  .act-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    background: var(--bg-3);
+    cursor: pointer;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: #3a3a3d;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .badge.role-user { background: rgba(78,201,176,.18); color: var(--user); }
+  .badge.role-bot  { background: rgba(86,156,214,.18); color: var(--bot); }
+  .badge.role-debug{ background: rgba(197,134,192,.18); color: var(--debug); }
+  .badge.type      { background: rgba(215,186,125,.15); color: var(--trace); }
+  .act-title { font-weight: 600; }
+  .act-sub { color: var(--fg-dim); font-size: 12px; }
+  .act-time { margin-left: auto; color: var(--fg-dim); font-size: 11px; font-family: Consolas, monospace; }
+  .act-body { padding: 10px 14px; }
+  .act-body.collapsed { display: none; }
+
+  .msg-text { white-space: pre-wrap; line-height: 1.5; }
+  .msg-text a { color: var(--accent); }
+  .field { display: flex; gap: 8px; margin: 3px 0; }
+  .field .k { color: var(--fg-dim); min-width: 150px; flex-shrink: 0; }
+  .field .v { word-break: break-word; }
+  .v.mono { font-family: Consolas, monospace; }
+  .pill { font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--bg-3); border: 1px solid var(--border); }
+  .pill.ok { color: var(--ok); border-color: var(--ok); }
+  .pill.err { color: var(--error); border-color: var(--error); }
+
+  .section-title { font-weight: 600; color: var(--fg); margin: 12px 0 4px; }
+  .sub { border: 1px solid var(--border); border-radius: 4px; margin: 6px 0; background: var(--bg); }
+  .sub > summary { padding: 5px 10px; cursor: pointer; color: var(--fg-dim); font-weight: 600; outline: none; }
+  .sub[open] > summary { color: var(--fg); border-bottom: 1px solid var(--border); }
+  .sub > div { padding: 8px 12px; }
+
+  pre.json {
+    margin: 6px 0 0;
+    padding: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: auto;
+    max-height: 480px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre;
+  }
+  .j-key { color: var(--json-key); }
+  .j-str { color: var(--json-str); }
+  .j-num { color: var(--json-num); }
+  .j-bool{ color: var(--json-bool); }
+  .j-null{ color: var(--fg-dim); }
+
+  .cite { border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; margin: 5px 0; background: var(--bg); }
+  .cite a { color: var(--accent); word-break: break-all; }
+  .cite .snip { color: var(--fg-dim); margin-top: 4px; max-height: 80px; overflow: hidden; position: relative; }
+  .cite .snip.expanded { max-height: none; }
+  .cite .score { font-family: Consolas, monospace; color: var(--json-num); font-size: 11px; }
+
+  .tokens { display: inline-flex; gap: 12px; flex-wrap: wrap; font-family: Consolas, monospace; font-size: 12px; color: var(--fg-dim); }
+  .tokens b { color: var(--fg); }
+  .hidden { display: none !important; }
+  .empty { color: var(--fg-dim); text-align: center; padding: 40px; }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--fg-dim);
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+  }
+  .icon-btn:hover { background: #3a3a3d; color: var(--fg); }
+  .icon-btn svg { width: 15px; height: 15px; display: block; }
+  .act-json-btn { margin-left: 8px; }
+  .act-info-btn { margin-left: 8px; }
+  .act-info-btn:hover { color: var(--accent); }
+
+  #infoTooltip {
+    position: fixed;
+    z-index: 200;
+    max-width: 360px;
+    background: #11151c;
+    color: var(--fg);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 8px 11px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5);
+    pointer-events: none;
+  }
+  #infoTooltip .tt-title { font-weight: 600; color: var(--accent); margin-bottom: 3px; }
+  #infoTooltip.hidden { display: none; }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    width: 90vw;
+    height: 88vh;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,.5);
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-head .title { font-weight: 600; }
+  .modal-head .spacer { margin-left: auto; }
+  .modal-head .copied { color: var(--ok); font-size: 12px; margin-right: 4px; }
+  .modal-body { flex: 1; overflow: auto; padding: 0; }
+  .modal-body pre.json { margin: 0; border: none; border-radius: 0; max-height: none; height: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Copilot Studio / PVA Transcript Debugger</h1>
+  <div class="toolbar">
+    <button id="btnLoadFile">Load file…</button>
+    <input type="file" id="fileInput" accept=".json,.txt,application/json" class="hidden" />
+    <button id="btnPaste">Paste JSON…</button>
+    <input type="search" id="search" placeholder="Filter text / id / name…" />
+    <button id="btnExpandAll">Expand all</button>
+    <button id="btnCollapseAll">Collapse all</button>
+    <span id="stats"></span>
+  </div>
+  <div class="filters" id="filters"></div>
+</header>
+
+<div id="dropzone">
+  <div><strong>Drop a transcript JSON file here</strong>, or use “Load file…”.</div>
+  <textarea id="pasteArea" placeholder="…or paste transcript JSON here and press Render"></textarea>
+  <div style="margin-top:8px"><button class="primary" id="btnRender">Render pasted JSON</button></div>
+</div>
+
+<main id="output"></main>
+
+<div id="infoTooltip" class="hidden"></div>
+
+<div id="jsonModal" class="modal-overlay hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Activity JSON">
+    <div class="modal-head">
+      <span class="title" id="modalTitle">Activity JSON</span>
+      <span class="spacer"></span>
+      <span class="copied hidden" id="modalCopied">Copied!</span>
+      <button class="icon-btn" id="modalCopy" title="Copy JSON to clipboard" aria-label="Copy JSON to clipboard">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="5.5" y="5.5" width="8" height="9" rx="1.2"/>
+          <path d="M3.5 10.5h-.5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v.5"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="modalClose" title="Close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body"><pre class="json" id="modalJson"></pre></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------------------- Parsing ---------------------------- */
+
+function parseTranscript(raw) {
+  if (typeof raw !== "string") throw new Error("Input is not text");
+  // Tolerate stray leading characters (e.g. a leading ']') before the JSON root.
+  let s = raw.replace(/^\uFEFF/, "");
+  const objIdx = s.indexOf("{");
+  const arrIdx = s.indexOf("[");
+  let start = -1;
+  if (objIdx === -1) start = arrIdx;
+  else if (arrIdx === -1) start = objIdx;
+  else start = Math.min(objIdx, arrIdx);
+  if (start > 0) s = s.slice(start);
+  const data = JSON.parse(s);
+  let activities;
+  if (Array.isArray(data)) activities = data;
+  else if (data && Array.isArray(data.activities)) activities = data.activities;
+  else if (data && typeof data === "object") activities = [data];
+  else throw new Error("Could not find activities array");
+  return activities.filter(a => a && typeof a === "object");
+}
+
+/* ------------------------- Normalization ------------------------- */
+
+function getRole(a) {
+  const r = a && a.from && a.from.role;
+  if (r === 0 || r === "0") return { label: "Bot", cls: "bot", raw: r };
+  if (r === 1 || r === "1") return { label: "User", cls: "user", raw: r };
+  if (typeof r === "string") {
+    const lr = r.toLowerCase();
+    if (lr === "user") return { label: "User", cls: "user", raw: r };
+    if (lr === "bot") return { label: "Bot", cls: "bot", raw: r };
+    if (lr === "debug") return { label: "Debug", cls: "debug", raw: r };
+    return { label: r, cls: "bot", raw: r };
+  }
+  return { label: "?", cls: "bot", raw: r };
+}
+
+function getType(a) {
+  return String(a.type || "").toLowerCase();
+}
+
+// Best label for trace/event grouping.
+function getValueKind(a) {
+  return a.valueType || a.name || "";
+}
+
+function getPosition(a) {
+  const cd = a.channelData;
+  if (cd && cd["webchat:internal:position"] != null) {
+    const p = Number(cd["webchat:internal:position"]);
+    if (!isNaN(p)) return p;
+  }
+  return null;
+}
+
+function getMillis(a) {
+  if (a.timestampMs != null && !isNaN(Number(a.timestampMs))) return Number(a.timestampMs);
+  if (a.timestamp != null) {
+    if (typeof a.timestamp === "number") {
+      // epoch seconds vs ms heuristic
+      return a.timestamp < 1e12 ? a.timestamp * 1000 : a.timestamp;
+    }
+    const t = Date.parse(a.timestamp);
+    if (!isNaN(t)) return t;
+  }
+  return null;
+}
+
+function fmtTime(a) {
+  const ms = getMillis(a);
+  if (ms == null) return "";
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().replace("T", " ").replace("Z", "");
+}
+
+function sortActivities(list) {
+  return list
+    .map((a, i) => ({ a, i, pos: getPosition(a), ms: getMillis(a) }))
+    .sort((x, y) => {
+      if (x.pos != null && y.pos != null && x.pos !== y.pos) return x.pos - y.pos;
+      if (x.ms != null && y.ms != null && x.ms !== y.ms) return x.ms - y.ms;
+      return x.i - y.i;
+    })
+    .map(o => o.a);
+}
+
+/* ---------------------------- HTML utils ---------------------------- */
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// Minimal, safe markdown: escape first, then enable links/bold/breaks.
+function mdToHtml(text) {
+  let h = esc(text);
+  h = h.replace(/&lt;br\s*\/?&gt;/gi, "<br>"); // literal <br /> in source
+  h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+    (m, t, u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`);
+  h = h.replace(/(^|[\s(])((https?:\/\/)[^\s<)]+)/g,
+    (m, pre, u) => `${pre}<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+  h = h.replace(/\r?\n/g, "<br>");
+  return h;
+}
+
+function syntaxJson(obj) {
+  let json;
+  try { json = JSON.stringify(obj, null, 2); }
+  catch (e) { json = String(obj); }
+  return esc(json)
+    .replace(/(&quot;(\\.|[^&]|&(?!quot;))*?&quot;)(\s*:)?/g,
+      (m, str, _g, colon) => colon
+        ? `<span class="j-key">${str}</span>${colon}`
+        : `<span class="j-str">${str}</span>`)
+    .replace(/\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, '<span class="j-num">$1</span>')
+    .replace(/\b(true|false)\b/g, '<span class="j-bool">$1</span>')
+    .replace(/\bnull\b/g, '<span class="j-null">null</span>');
+}
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+
+function rawDetails(obj, label) {
+  return `<details class="sub"><summary>${esc(label || "Raw JSON")}</summary>`
+    + `<div><pre class="json">${syntaxJson(obj)}</pre></div></details>`;
+}
+
+function field(k, v, mono) {
+  return `<div class="field"><div class="k">${esc(k)}</div>`
+    + `<div class="v${mono ? " mono" : ""}">${v == null || v === "" ? "—" : esc(v)}</div></div>`;
+}
+
+function fieldHtml(k, vHtml) {
+  return `<div class="field"><div class="k">${esc(k)}</div><div class="v">${vHtml}</div></div>`;
+}
+
+/* -------------------------- Renderers -------------------------- */
+// Registry keyed by lowercased valueType/name. Each returns inner HTML.
+
+const renderers = {};
+function reg(key, fn) { renderers[key.toLowerCase()] = fn; }
+
+/* ---- Friendly descriptions shown on the info-icon hover ---- */
+const TYPE_DESCRIPTIONS = {
+  // High-level activity types
+  "type:message": "A chat message exchanged in the conversation — either something the user said or a reply from the bot.",
+  "type:event":   "A behind-the-scenes event activity. It carries system signals or data that drive the bot rather than text shown to the user.",
+  "type:trace":   "Diagnostic trace information emitted while the bot runs. It is only visible in debugging/test tools, never to the end user.",
+  "type:typing":  "A typing indicator — the bot is composing its response.",
+
+  // Trace / event valueType or name
+  "conversationinfo": "Basic facts about this conversation session, such as the locale and whether it is running in design / test mode.",
+  "sessioninfo": "A summary of the whole session — when it started and ended, the final outcome, how many turns it took, and whether it was considered successful.",
+  "variableassignment": "Records a bot variable being set or changed. Shows the variable name, its scope (global or topic), and the new value it was given.",
+  "dialogredirect": "The bot handed control from one topic / dialog to another (a redirect between topics).",
+  "dialogtracing": "A step-by-step trace of the actions the bot ran inside a topic — setting variables, evaluating conditions, sending messages, calling connectors, and so on.",
+  "dialogtracinginfo": "A step-by-step trace of the actions the bot ran inside a topic — setting variables, evaluating conditions, sending messages, calling connectors, and so on.",
+  "errortracedata": "An error that occurred during the conversation. Includes the error code and message, and whether it was caused by the user or the system.",
+  "dynamicplanreceived": "The generative (AI) orchestrator produced a plan — the set of steps and tools it intends to use to answer the user's request.",
+  "dynamicplanreceiveddebug": "A debug view of the generated plan, including the model's reasoning summary and the question it is trying to answer.",
+  "dynamicplansteptriggered": "A single step in the generative plan has started running, along with the model's 'thought' about why this step is needed.",
+  "dynamicplanstepbindupdate": "The inputs / arguments being bound to a plan step before it runs, including any values the model auto-filled.",
+  "dynamicplanstepfinished": "A plan step finished. Shows its result (observation), how long it took, its cost, and any error that occurred.",
+  "dynamicplanfinished": "The generative plan has completed — or was cancelled before finishing.",
+  "generativeanswerssupportdata": "Behind-the-scenes data for a generative AI answer: the rewritten search query, the knowledge-source search results and citations, the summarization prompt, and the token / cost usage."
+};
+
+function describeType(a) {
+  const kind = (a.valueType || a.name || "").toLowerCase();
+  if (kind && TYPE_DESCRIPTIONS[kind]) return TYPE_DESCRIPTIONS[kind];
+  const t = "type:" + String(a.type || "").toLowerCase();
+  if (TYPE_DESCRIPTIONS[t]) return TYPE_DESCRIPTIONS[t];
+  return "No friendly description is available for this type yet. Open the full JSON to inspect the raw activity.";
+}reg("conversationinfo", v => field("isDesignMode", v && v.isDesignMode)
+  + field("locale", v && v.locale));
+
+reg("sessioninfo", v => (v ? (
+  field("outcome", v.outcome)
+  + field("outcomeReason", v.outcomeReason)
+  + field("turnCount", v.turnCount)
+  + field("impliedSuccess", v.impliedSuccess)
+  + field("startTimeUtc", v.startTimeUtc, true)
+  + field("endTimeUtc", v.endTimeUtc, true)
+) : ""));
+
+reg("variableassignment", v => (v ? (
+  field("name", v.name)
+  + field("id", v.id, true)
+  + field("type", v.type)
+  + fieldHtml("newValue", typeof v.newValue === "object"
+      ? rawDetails(v.newValue, "value")
+      : `<span class="mono">${esc(v.newValue)}</span>`)
+) : ""));
+
+reg("dialogredirect", v => (v ? (
+  field("targetDialogId", v.targetDialogId, true)
+  + field("targetDialogType", v.targetDialogType)
+) : ""));
+
+reg("errortracedata", v => (v ? (
+  `<div class="field"><div class="k">isUserError</div><div class="v">`
+  + `<span class="pill ${v.isUserError ? "" : "err"}">${esc(v.isUserError)}</span></div></div>`
+  + field("errorCode", v.errorCode)
+  + field("errorSubCode", v.errorSubCode)
+  + fieldHtml("errorMessage", `<span style="color:var(--error)">${esc(v.errorMessage)}</span>`)
+) : ""));
+
+function renderDialogTracing(v) {
+  const actions = (v && v.actions) || (v && v.value && v.value.actions) || [];
+  if (!Array.isArray(actions) || !actions.length) return rawDetails(v, "value");
+  return actions.map((ac, i) => {
+    let inner = "";
+    inner += field("actionType", ac.actionType);
+    inner += field("actionId", ac.actionId, true);
+    if (ac.topicId) inner += field("topicId", ac.topicId, true);
+    if (ac.triggerId) inner += field("triggerId", ac.triggerId, true);
+    if (ac.dialogComponentId) inner += field("dialogComponentId", ac.dialogComponentId, true);
+    if (ac.conditionItemExit && ac.conditionItemExit.length)
+      inner += fieldHtml("conditionItemExit", rawDetails(ac.conditionItemExit, "exits"));
+    if (ac.exception)
+      inner += fieldHtml("exception", `<span style="color:var(--error)">${esc(JSON.stringify(ac.exception))}</span>`);
+    if (ac.resultTrace) {
+      const rt = ac.resultTrace;
+      if (rt.conditionExpression != null)
+        inner += fieldHtml("conditionExpression", `<span class="mono">${esc(rt.conditionExpression)}</span>`);
+      inner += fieldHtml("resultTrace", rawDetails(rt, rt.$type || "resultTrace"));
+    }
+    if (ac.variableState)
+      inner += fieldHtml("variableState", rawDetails(ac.variableState, "variableState"));
+    const title = esc(ac.actionType || "action") + (ac.dialogComponentId ? ` · ${esc(ac.dialogComponentId)}` : "");
+    return `<details class="sub" ${actions.length <= 3 ? "open" : ""}><summary>#${i + 1} ${title}</summary><div>${inner}</div></details>`;
+  }).join("");
+}
+reg("dialogtracinginfo", renderDialogTracing);
+reg("dialogtracing", renderDialogTracing);
+
+reg("dynamicplanreceived", v => {
+  if (!v) return "";
+  let h = field("planIdentifier", v.planIdentifier, true) + field("isFinalPlan", v.isFinalPlan);
+  if (Array.isArray(v.steps)) h += fieldHtml("steps", rawDetails(v.steps, `${v.steps.length} step(s)`));
+  if (Array.isArray(v.toolDefinitions) && v.toolDefinitions.length) {
+    h += `<div class="section-title">Tools</div>`;
+    h += v.toolDefinitions.map(t =>
+      `<div class="cite"><strong>${esc(t.displayName || t.schemaName || t.$kind)}</strong>`
+      + (t.toolKind ? ` <span class="pill">${esc(t.toolKind)}</span>` : "")
+      + (t.description ? `<div class="snip expanded">${esc(t.description)}</div>` : "")
+      + `</div>`).join("");
+  }
+  return h;
+});
+
+reg("dynamicplanreceiveddebug", v => (v ? (
+  field("planIdentifier", v.planIdentifier, true)
+  + field("isFinalPlan", v.isFinalPlan)
+  + (v.ask ? fieldHtml("ask", `<div class="msg-text">${mdToHtml(v.ask)}</div>`) : "")
+  + (v.summary ? fieldHtml("summary", `<div class="msg-text">${mdToHtml(v.summary)}</div>`) : "")
+) : ""));
+
+reg("dynamicplansteptriggered", v => (v ? (
+  field("stepId", v.stepId, true)
+  + field("taskDialogId", v.taskDialogId, true)
+  + field("type", v.type)
+  + field("state", typeof v.state === "object" ? JSON.stringify(v.state) : v.state)
+  + (v.thought ? fieldHtml("thought", `<div class="msg-text">${mdToHtml(v.thought)}</div>`) : "")
+) : ""));
+
+reg("dynamicplanstepbindupdate", v => (v ? (
+  field("stepId", v.stepId, true)
+  + field("taskDialogId", v.taskDialogId, true)
+  + (v.arguments ? fieldHtml("arguments", rawDetails(v.arguments, "arguments")) : "")
+  + (v.autoFilledArguments ? fieldHtml("autoFilledArguments", rawDetails(v.autoFilledArguments, "autoFilledArguments")) : "")
+) : ""));
+
+reg("dynamicplanstepfinished", v => {
+  if (!v) return "";
+  const failed = (String(v.state).toLowerCase() === "failed") || v.error;
+  let h = field("stepId", v.stepId, true)
+    + field("taskDialogId", v.taskDialogId, true)
+    + `<div class="field"><div class="k">state</div><div class="v">`
+    + `<span class="pill ${failed ? "err" : "ok"}">${esc(v.state)}</span></div></div>`
+    + field("executionTime", v.executionTime)
+    + field("displayedCost", v.displayedCost);
+  if (v.error) h += fieldHtml("error",
+    `<span style="color:var(--error)">${esc(v.error.userErrorCode || "")} ${esc(v.error.message || "")}</span>`);
+  if (v.observation) h += fieldHtml("observation", rawDetails(v.observation, "observation"));
+  if (v.planUsedOutputs) h += fieldHtml("planUsedOutputs", rawDetails(v.planUsedOutputs, "planUsedOutputs"));
+  return h;
+});
+
+reg("dynamicplanfinished", v => (v ? (
+  field("planId", v.planId, true)
+  + `<div class="field"><div class="k">wasCancelled</div><div class="v">`
+  + `<span class="pill ${v.wasCancelled ? "err" : "ok"}">${esc(v.wasCancelled)}</span></div></div>`
+) : ""));
+
+function tokenLine(usage) {
+  if (!usage || typeof usage !== "object") return "";
+  const p = usage.PromptTokens ?? usage.promptTokens;
+  const c = usage.CompletionTokens ?? usage.completionTokens;
+  const t = usage.TotalTokens ?? usage.totalTokens;
+  const m = usage.ModelName ?? usage.modelName;
+  const parts = [];
+  if (m) parts.push(`model <b>${esc(m)}</b>`);
+  if (p != null) parts.push(`prompt <b>${esc(p)}</b>`);
+  if (c != null) parts.push(`completion <b>${esc(c)}</b>`);
+  if (t != null) parts.push(`total <b>${esc(t)}</b>`);
+  return parts.length ? `<div class="tokens">${parts.join("")}</div>` : "";
+}
+
+function renderSearchResults(arr, label) {
+  if (!Array.isArray(arr) || !arr.length) return "";
+  let h = `<details class="sub"><summary>${esc(label)} (${arr.length})</summary><div>`;
+  h += arr.map(r => {
+    const url = r.url || r.Url || "";
+    const snip = r.snippet || r.Snippet || "";
+    const score = r.rankScore ?? r.RankScore;
+    const stype = r.searchType || r.SearchType;
+    return `<div class="cite">`
+      + (url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>` : "<em>(no url)</em>")
+      + (score != null ? ` <span class="score">score ${esc(score)}</span>` : "")
+      + (stype ? ` <span class="pill">${esc(stype)}</span>` : "")
+      + (snip ? `<div class="snip" onclick="this.classList.toggle('expanded')" title="click to expand">${esc(snip)}</div>` : "")
+      + `</div>`;
+  }).join("");
+  h += `</div></details>`;
+  return h;
+}
+
+reg("generativeanswerssupportdata", v => {
+  if (!v) return "";
+  let h = "";
+  h += field("message", v.message);
+  if (v.rewrittenMessage) h += field("rewrittenMessage", v.rewrittenMessage);
+  if (v.rewrittenMessageKeywords) h += field("keywords",
+    Array.isArray(v.rewrittenMessageKeywords) ? v.rewrittenMessageKeywords.join(", ") : v.rewrittenMessageKeywords);
+  h += `<div class="field"><div class="k">state</div><div class="v">`
+    + `<span class="pill">${esc(v.completionState || "")}</span> `
+    + `<span class="pill">${esc(v.gptAnswerState || "")}</span>`
+    + (v.triggeredGptFallback ? ` <span class="pill err">gptFallback</span>` : "")
+    + `</div></div>`;
+
+  const qr = v.queryRewrittingOpenAIResponse;
+  if (qr) {
+    let inner = "";
+    if (qr.Response) inner += rawDetails(qr.Response, "Response");
+    if (qr.Prompt) inner += `<details class="sub"><summary>Prompt</summary><div><pre class="json">${esc(typeof qr.Prompt === "string" ? qr.Prompt : JSON.stringify(qr.Prompt, null, 2))}</pre></div></details>`;
+    inner += tokenLine(qr.CapiResourceUsage || qr.capiResourceUsage);
+    h += `<details class="sub"><summary>Query rewriting (OpenAI)</summary><div>${inner}</div></details>`;
+  }
+
+  const sr = v.summarizationOpenAIResponse;
+  if (sr) {
+    let inner = "";
+    if (sr.Result) inner += rawDetails(sr.Result, "Result");
+    if (sr.Prompt) inner += `<details class="sub"><summary>Prompt</summary><div><pre class="json">${esc(typeof sr.Prompt === "string" ? sr.Prompt : JSON.stringify(sr.Prompt, null, 2))}</pre></div></details>`;
+    inner += tokenLine(sr.CapiResourceUsage || sr.capiResourceUsage);
+    h += `<details class="sub"><summary>Summarization (OpenAI)</summary><div>${inner}</div></details>`;
+  }
+
+  if (Array.isArray(v.searchTerms) && v.searchTerms.length)
+    h += field("searchTerms", v.searchTerms.map(t => {
+      if (t && typeof t === "object") {
+        const term = t.Term ?? t.term;
+        const src = t.Source ?? t.source;
+        if (term != null) return src != null ? `${term} (${src})` : `${term}`;
+        return JSON.stringify(t);
+      }
+      return t;
+    }).join(" | "));
+  h += renderSearchResults(v.verifiedSearchResults, "Verified search results");
+  h += renderSearchResults(v.searchResults, "Search results");
+  h += renderSearchResults(v.ShadowSearchResults || v.shadowSearchResults, "Shadow search results");
+  h += rawDetails(v, "Full GenerativeAnswersSupportData");
+  return h;
+});
+
+/* ---------------------- Message renderer ---------------------- */
+
+function renderMessage(a) {
+  let h = "";
+  if (a.text) h += `<div class="msg-text">${mdToHtml(a.text)}</div>`;
+  if (a.speak && a.speak !== a.text)
+    h += fieldHtml("speak", `<span class="act-sub">${esc(a.speak)}</span>`);
+  if (Array.isArray(a.attachments) && a.attachments.length)
+    h += fieldHtml("attachments", rawDetails(a.attachments, `${a.attachments.length} attachment(s)`));
+  if (Array.isArray(a.suggestedActions?.actions) && a.suggestedActions.actions.length)
+    h += fieldHtml("suggestedActions", rawDetails(a.suggestedActions.actions, "suggestedActions"));
+  if (a.channelData && a.channelData.feedbackLoop)
+    h += fieldHtml("feedbackLoop", rawDetails(a.channelData.feedbackLoop, "feedbackLoop"));
+  if (!h) h = `<span class="act-sub">(no text)</span>`;
+  return h;
+}
+
+/* ----------------------- Activity card ----------------------- */
+
+function renderActivity(a) {
+  const type = getType(a);
+  const role = getRole(a);
+  const kind = getValueKind(a);
+  const isMsg = type === "message";
+
+  let cls = "activity";
+  if (isMsg) cls += " role-" + role.cls;
+  else if (type === "trace") cls += " kind-trace";
+  else if (type === "event") cls += " kind-event";
+  else if (type === "typing") cls += " kind-typing";
+  else cls += " kind-event";
+
+  const card = el("div", cls);
+
+  // Header
+  const head = el("div", "act-head");
+  let badges = `<span class="badge type">${esc(a.type || "?")}</span>`;
+  if (isMsg) badges += `<span class="badge role-${role.cls}">${esc(role.label)}</span>`;
+  if (kind) badges += `<span class="badge">${esc(kind)}</span>`;
+
+  let title = "";
+  if (isMsg) title = role.label;
+  else title = kind || a.name || a.type;
+  let sub = "";
+  if (a.from && a.from.id) sub = esc(a.from.id);
+  if (role.raw != null && !isMsg) sub += (sub ? " · " : "") + "role=" + esc(role.raw);
+
+  head.innerHTML = badges
+    + `<span class="act-title">${esc(title)}</span>`
+    + (sub ? `<span class="act-sub">${sub}</span>` : "")
+    + `<span class="act-time">${esc(fmtTime(a))}</span>`
+    + `<button class="icon-btn act-info-btn" title="" aria-label="What is this?">`
+    + `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">`
+    + `<circle cx="8" cy="8" r="6.2"/>`
+    + `<path d="M8 7.2v4" stroke-width="1.5"/>`
+    + `<circle cx="8" cy="4.9" r="0.2" stroke-width="1.4"/>`
+    + `</svg></button>`
+    + `<button class="icon-btn act-json-btn" title="View full JSON" aria-label="View full JSON">`
+    + `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">`
+    + `<path d="M6 2.5C4 2.5 4.5 7 2.5 8c2 1 1.5 5.5 3.5 5.5"/>`
+    + `<path d="M10 2.5c2 0 1.5 4.5 3.5 5.5-2 1-1.5 5.5-3.5 5.5"/>`
+    + `</svg></button>`;
+  card.appendChild(head);
+
+  // Body
+  const body = el("div", "act-body");
+  let inner;
+  if (isMsg) {
+    const lname = (a.name || a.valueType || "").toLowerCase();
+    if (lname && renderers[lname]) {
+      const lname2 = lname;
+      inner = renderers[lname2](a.value != null ? a.value : a);
+    } else {
+      inner = renderMessage(a);
+    }
+  } else if (type === "typing") {
+    inner = `<span class="act-sub">typing…</span>` + rawDetails(a, "Raw");
+  } else {
+    const key = (a.valueType || a.name || "").toLowerCase();
+    if (key && renderers[key]) {
+      inner = renderers[key](a.value != null ? a.value : a);
+    } else {
+      // Generic fallback for any unlisted trace/event.
+      inner = `<span class="act-sub">No specific renderer for “${esc(kind || a.type)}”.</span>`
+        + rawDetails(a.value != null ? a.value : a, "Raw value");
+    }
+  }
+  body.innerHTML = inner;
+  card.appendChild(body);
+
+  // Collapse the noisy ones by default.
+  if (type === "typing") body.classList.add("collapsed");
+
+  head.addEventListener("click", () => body.classList.toggle("collapsed"));
+
+  const jsonBtn = head.querySelector(".act-json-btn");
+  if (jsonBtn) {
+    jsonBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      openJsonModal(a, title);
+    });
+  }
+
+  const infoBtn = head.querySelector(".act-info-btn");
+  if (infoBtn) {
+    const desc = describeType(a);
+    const ttTitle = (kind || a.type || "Activity");
+    infoBtn.addEventListener("click", e => e.stopPropagation());
+    infoBtn.addEventListener("mouseenter", e => { e.stopPropagation(); showInfoTooltip(infoBtn, ttTitle, desc); });
+    infoBtn.addEventListener("mouseleave", hideInfoTooltip);
+    infoBtn.addEventListener("focus", () => showInfoTooltip(infoBtn, ttTitle, desc));
+    infoBtn.addEventListener("blur", hideInfoTooltip);
+  }
+  // Searchable text cache.
+  card._searchText = (JSON.stringify(a) || "").toLowerCase();
+  card._type = type;
+  card._kind = (kind || "").toLowerCase();
+  card._role = role.cls;
+  return card;
+}
+
+/* ------------------------- App state ------------------------- */
+
+let allCards = [];
+let activities = [];
+
+function buildFilters() {
+  const filters = document.getElementById("filters");
+  filters.innerHTML = "";
+  const types = new Set(activities.map(getType));
+  const mk = (id, label, checked) => {
+    const w = el("label", "chk");
+    w.innerHTML = `<input type="checkbox" id="${id}" ${checked ? "checked" : ""}/> ${esc(label)}`;
+    filters.appendChild(w);
+    w.querySelector("input").addEventListener("change", applyFilters);
+    return w;
+  };
+  filters.appendChild(el("span", "act-sub", "Show:"));
+  ["message", "event", "trace", "typing"].forEach(t => {
+    if (types.has(t)) mk("flt-" + t, t, t !== "typing");
+  });
+}
+
+function applyFilters() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const show = {};
+  ["message", "event", "trace", "typing"].forEach(t => {
+    const box = document.getElementById("flt-" + t);
+    show[t] = box ? box.checked : true;
+  });
+  let visible = 0;
+  allCards.forEach(card => {
+    const typeOk = show[card._type] !== false;
+    const qOk = !q || card._searchText.includes(q);
+    const vis = typeOk && qOk;
+    card.classList.toggle("hidden", !vis);
+    if (vis) visible++;
+  });
+  document.getElementById("stats").textContent =
+    `${visible} / ${activities.length} activities`;
+}
+
+function render(list) {
+  activities = list.slice();
+  const out = document.getElementById("output");
+  out.innerHTML = "";
+  allCards = activities.map(renderActivity);
+  allCards.forEach(c => out.appendChild(c));
+  document.getElementById("dropzone").style.display = "none";
+  buildFilters();
+  applyFilters();
+}
+
+function loadText(text) {
+  try {
+    const list = parseTranscript(text);
+    if (!list.length) throw new Error("No activities found");
+    render(list);
+  } catch (e) {
+    alert("Failed to parse transcript:\n" + e.message);
+    console.error(e);
+  }
+}
+
+/* --------------------------- Info tooltip --------------------------- */
+
+function showInfoTooltip(anchor, title, text) {
+  const tip = document.getElementById("infoTooltip");
+  tip.innerHTML = `<div class="tt-title">${esc(title)}</div><div>${esc(text)}</div>`;
+  tip.classList.remove("hidden");
+  const r = anchor.getBoundingClientRect();
+  const tr = tip.getBoundingClientRect();
+  let left = r.right - tr.width;
+  if (left < 8) left = 8;
+  let top = r.bottom + 6;
+  if (top + tr.height > window.innerHeight - 8) top = r.top - tr.height - 6;
+  if (top < 8) top = 8;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
+
+function hideInfoTooltip() {
+  document.getElementById("infoTooltip").classList.add("hidden");
+}
+
+/* --------------------------- JSON modal --------------------------- */
+
+let modalJsonText = "";function openJsonModal(activity, title) {
+  modalJsonText = JSON.stringify(activity, null, 2);
+  document.getElementById("modalTitle").textContent = "Activity JSON — " + (title || "");
+  document.getElementById("modalJson").innerHTML = syntaxJson(activity);
+  document.getElementById("modalCopied").classList.add("hidden");
+  document.getElementById("jsonModal").classList.remove("hidden");
+}
+
+function closeJsonModal() {
+  document.getElementById("jsonModal").classList.add("hidden");
+}
+
+document.getElementById("modalClose").addEventListener("click", closeJsonModal);
+document.getElementById("jsonModal").addEventListener("click", e => {
+  if (e.target.id === "jsonModal") closeJsonModal();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeJsonModal();
+});
+document.getElementById("modalCopy").addEventListener("click", async () => {
+  const copied = document.getElementById("modalCopied");
+  function fallbackCopy() {
+    const ta = document.createElement("textarea");
+    ta.value = modalJsonText;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  let ok = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(modalJsonText);
+      ok = true;
+    } else {
+      ok = fallbackCopy();
+    }
+  } catch (err) {
+    ok = fallbackCopy();
+  }
+  if (ok) {
+    copied.classList.remove("hidden");
+    setTimeout(() => copied.classList.add("hidden"), 1500);
+  } else {
+    alert("Copy failed — your browser blocked clipboard access.");
+  }
+});
+
+/* ------------------------- Wire up UI ------------------------- */
+
+document.getElementById("btnLoadFile").addEventListener("click", () =>
+  document.getElementById("fileInput").click());
+
+document.getElementById("fileInput").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => loadText(r.result);
+  r.readAsText(f);
+});
+
+document.getElementById("btnPaste").addEventListener("click", () => {
+  const dz = document.getElementById("dropzone");
+  dz.style.display = "block";
+  document.getElementById("pasteArea").focus();
+});
+
+document.getElementById("btnRender").addEventListener("click", () => {
+  const t = document.getElementById("pasteArea").value;
+  if (t.trim()) loadText(t);
+});
+
+document.getElementById("search").addEventListener("input", applyFilters);
+
+document.getElementById("btnExpandAll").addEventListener("click", () => {
+  allCards.forEach(c => c.querySelector(".act-body").classList.remove("collapsed"));
+});
+document.getElementById("btnCollapseAll").addEventListener("click", () => {
+  allCards.forEach(c => c.querySelector(".act-body").classList.add("collapsed"));
+});
+
+const dz = document.getElementById("dropzone");
+["dragenter", "dragover"].forEach(ev =>
+  document.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("drag"); }));
+["dragleave", "drop"].forEach(ev =>
+  document.addEventListener(ev, e => { e.preventDefault(); if (ev === "drop" || e.target === dz) dz.classList.remove("drag"); }));
+document.addEventListener("drop", e => {
+  e.preventDefault();
+  dz.classList.remove("drag");
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => loadText(r.result);
+  r.readAsText(f);
+});
+</script>
+</body>
+</html>
